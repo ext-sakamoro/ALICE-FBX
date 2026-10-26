@@ -60,7 +60,7 @@ jobs:
             cmp "$f" "tests/data/$(basename "$f")"
             n=$((n + 1))
           done
-          [ "$n" -ge 7 ] || { echo "only $n fixtures compared"; exit 1; }
+          [ "$n" -ge 8 ] || { echo "only $n fixtures compared"; exit 1; }
       # every test binary ran at least as many tests as named (a test that stops being
       # compiled or is renamed away fails here instead of passing by absence)
       - name: Tests
@@ -68,7 +68,7 @@ jobs:
         run: |
           set -euo pipefail
           python3 scripts/test_min_passed.py
-          cargo test 2>&1 | python3 scripts/min_passed.py tree=6 parity=1
+          cargo test 2>&1 | python3 scripts/min_passed.py tree=6 scene=7 parity=1
 
   msrv:
     name: MSRV (1.85)

@@ -3,7 +3,8 @@
 A bounds-checked reader of binary FBX files.
 
 It is for loading models into ALICE programs from the format most modelling tools export. It is
-not a writer, it does not read ASCII FBX, and it does not evaluate animation curves.
+not a writer, it does not read ASCII FBX, and it does not evaluate animation curves or
+textures.
 
 ## Install
 
@@ -27,7 +28,7 @@ for node in &doc.nodes {
 | Layer | Status |
 |---|---|
 | Node tree: records, every property type, raw and zlib arrays, versions 7100-7700 (32- and 64-bit record words) | read |
-| Scene: meshes, normals / UV / material layers, bones, skins, blend shapes, materials | planned |
+| Scene (`read_scene`): models with their transforms and hierarchy, meshes with per-corner normals and UVs and per-polygon materials, skin clusters, blend shape channels, materials, axes and unit | read |
 | ASCII FBX | not read |
 
 ## What it refuses
@@ -42,6 +43,10 @@ and never panics.
 - an array whose stored or inflated length differs from its declared element count, or that
   would hold more than 256 MiB
 - records nested deeper than 64
+- in the scene: an index outside what it names (a point, a UV, a material slot), arrays of
+  mismatched lengths, an open polygon or one of fewer than 3 corners, a non-finite number, a
+  layer mapping or rotation order it does not read, a connection to an object that does not
+  exist, a model that is its own ancestor
 
 ## How it is checked
 
@@ -51,7 +56,7 @@ and never panics.
   two trees must be equal. `ALICE_FBX_PARITY=<file> cargo test --test parity -- --ignored` runs
   the same comparison on any local file.
 - Every truncation of the fixtures is refused, and changing any byte never panics.
-- Two fuzz targets run in CI.
+- Three fuzz targets run in CI: any bytes, bytes behind a valid header, and bytes read as a scene.
 
 ## MSRV
 

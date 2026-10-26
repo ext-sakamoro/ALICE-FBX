@@ -25,12 +25,12 @@ for f in "$tmp"/*.fbx; do
   cmp "$f" "tests/data/$(basename "$f")"
   n=$((n + 1))
 done
-[ "$n" -ge 7 ] || { echo "only $n fixtures compared"; exit 1; }
+[ "$n" -ge 8 ] || { echo "only $n fixtures compared"; exit 1; }
 echo "$n fixtures equal"
 
 step "ci.yml / test: tests with per-binary minimums"
 python3 scripts/test_min_passed.py
-cargo test 2>&1 | python3 scripts/min_passed.py tree=6 parity=1
+cargo test 2>&1 | python3 scripts/min_passed.py tree=6 scene=7 parity=1
 
 step "ci.yml / msrv: build with rust-version 1.85"
 if rustup toolchain list | grep -q '^1\.85'; then
@@ -60,9 +60,11 @@ cargo audit
 cargo deny check all
 
 step "fuzz.yml: 30 s per target"
-for t in fuzz_read_tree fuzz_read_tree_versioned; do
+for t in fuzz_read_tree fuzz_read_tree_versioned fuzz_read_scene; do
   mkdir -p "fuzz/corpus/$t"
-  cp tests/data/*.fbx "fuzz/corpus/$t/"
+  for f in tests/data/*.fbx; do
+    if [ "$t" = fuzz_read_tree ]; then cp "$f" "fuzz/corpus/$t/"; else tail -c +28 "$f" > "fuzz/corpus/$t/$(basename "$f")"; fi
+  done
   cargo +nightly fuzz run "$t" -- -max_total_time=30 -rss_limit_mb=2048
 done
 

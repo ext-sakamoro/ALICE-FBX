@@ -19,6 +19,13 @@ doc = false
 bench = false
 
 [[bin]]
+name = "fuzz_read_scene"
+path = "fuzz_targets/fuzz_read_scene.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
 name = "fuzz_read_tree_versioned"
 path = "fuzz_targets/fuzz_read_tree_versioned.rs"
 test = false

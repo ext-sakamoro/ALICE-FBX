@@ -1,4 +1,4 @@
-//! A reader of binary FBX files: the node tree ([`tree`]).
+//! A reader of binary FBX files: the node tree ([`tree`]) and the scene on it ([`scene`]).
 //!
 //! Every offset, length and array size is checked against the file before it is used; a file
 //! that does not fit is refused with the offset where it stopped fitting.
@@ -14,8 +14,10 @@
 
 #![forbid(unsafe_code)]
 
+pub mod scene;
 pub mod tree;
 
+pub use scene::{read_scene, Scene};
 pub use tree::{read_tree, Document, Node, Prop};
 
 /// Why a file was refused
@@ -60,6 +62,8 @@ pub enum FbxError {
         /// Offset of the list that is too deep
         at: usize,
     },
+    /// A scene object or connection that does not fit what it names
+    BadScene(String),
 }
 
 impl std::fmt::Display for FbxError {
@@ -73,6 +77,7 @@ impl std::fmt::Display for FbxError {
             Self::BadProperty { at, why } => write!(f, "a property at {at}: {why}"),
             Self::BadArray { at, why } => write!(f, "an array at {at}: {why}"),
             Self::TooDeep { at } => write!(f, "records nested too deep at {at}"),
+            Self::BadScene(what) => write!(f, "scene: {what}"),
         }
     }
 }

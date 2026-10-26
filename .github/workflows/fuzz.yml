@@ -1,7 +1,8 @@
 name: Fuzz
 
 # The reader is fed bytes it did not write: each target runs for a minute from the fixtures
-# in tests/data, and a crash fails the run with the input attached
+# in tests/data (without their header for the targets that add one), and a crash fails the
+# run with the input attached
 
 on:
   push:
@@ -25,7 +26,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        target: [fuzz_read_tree, fuzz_read_tree_versioned]
+        target: [fuzz_read_tree, fuzz_read_tree_versioned, fuzz_read_scene]
     steps:
       - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5.1.0
         with:
@@ -38,7 +39,14 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p "fuzz/corpus/${{ matrix.target }}"
-          cp tests/data/*.fbx "fuzz/corpus/${{ matrix.target }}/"
+          # fuzz_read_tree takes whole files; the others put the header on themselves
+          for f in tests/data/*.fbx; do
+            if [ "${{ matrix.target }}" = fuzz_read_tree ]; then
+              cp "$f" "fuzz/corpus/${{ matrix.target }}/"
+            else
+              tail -c +28 "$f" > "fuzz/corpus/${{ matrix.target }}/$(basename "$f")"
+            fi
+          done
           n=$(find "fuzz/corpus/${{ matrix.target }}" -type f | wc -l)
           [ "$n" -gt 0 ] || { echo "empty corpus"; exit 1; }
       - name: Run for 60 s

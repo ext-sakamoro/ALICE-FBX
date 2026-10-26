@@ -118,6 +118,110 @@ def prop(kind, value):  # noqa: F811  (adds the hand-made arrays of the hostile 
     return _prop(kind, value)
 
 
+def p70(*entries):
+    """A Properties70 record: each entry is (name, type, flags, values...)."""
+    out = []
+    for name, typ, flags, *vals in entries:
+        props = [("S", name.encode()), ("S", typ.encode()), ("S", b""), ("S", flags.encode())]
+        for v in vals:
+            props.append(("D", float(v)) if isinstance(v, float) else ("I", v) if isinstance(v, int) else ("S", v.encode()))
+        out.append(node("P", props))
+    return node("Properties70", [], out)
+
+
+def obj(kind, oid, name, cls, sub, children):
+    return node(kind, [("L", oid), ("S", name.encode() + b"\x00\x01" + cls.encode()), ("S", sub.encode())], children)
+
+
+def conn(kind, child, parent, prop=None):
+    props = [("S", kind.encode()), ("L", child), ("L", parent)]
+    if prop is not None:
+        props.append(("S", prop.encode()))
+    return node("C", props)
+
+
+IDENTITY = [1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0]
+
+# A small scene: two bones (Hips -> Spine), a mesh model with a quad and a pentagon, normals
+# per polygon vertex (direct), UVs per polygon vertex (index to direct), two materials per polygon,
+# a skin of two clusters, and one blend shape channel with one target.
+SCENE = [
+    node("FBXHeaderExtension", [], [node("FBXVersion", [("I", 7400)])]),
+    node("GlobalSettings", [], [p70(
+        ("UpAxis", "int", "", 1), ("UpAxisSign", "int", "", 1),
+        ("FrontAxis", "int", "", 2), ("FrontAxisSign", "int", "", 1),
+        ("CoordAxis", "int", "", 0), ("CoordAxisSign", "int", "", 1),
+        ("UnitScaleFactor", "double", "", 100.0),
+    )]),
+    node("Objects", [], [
+        obj("Model", 100, "Hips", "Model", "LimbNode", [p70(
+            ("Lcl Translation", "Lcl Translation", "A", 0.0, 1.0, 0.0),
+            ("Lcl Rotation", "Lcl Rotation", "A", 0.0, 90.0, 0.0),
+            ("Lcl Scaling", "Lcl Scaling", "A", 2.0, 2.0, 2.0),
+        )]),
+        obj("Model", 101, "Spine", "Model", "LimbNode", [p70(
+            ("Lcl Translation", "Lcl Translation", "A", 0.0, 0.5, 0.0),
+            ("PreRotation", "Vector3D", "Vector", 0.0, 0.0, 90.0),
+            ("RotationOrder", "enum", "", 4),
+        )]),
+        obj("Model", 200, "Body", "Model", "Mesh", []),
+        obj("Geometry", 300, "Body", "Geometry", "Mesh", [
+            node("Vertices", [("dz", [0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 1.0, 1.0, 0.0, 0.0, 1.0, 0.0,
+                                      2.0, 0.0, 0.0, 2.0, 1.0, 0.0, 1.5, 1.5, 0.0])]),
+            # quad 0 1 2 3, pentagon 1 4 5 6 2 (the last index of a polygon is ~i = -i - 1)
+            node("PolygonVertexIndex", [("i", [0, 1, 2, -4, 1, 4, 5, 6, -3])]),
+            node("LayerElementNormal", [("I", 0)], [
+                node("MappingInformationType", [("S", b"ByPolygonVertex")]),
+                node("ReferenceInformationType", [("S", b"Direct")]),
+                node("Normals", [("d", [0.0, 0.0, 1.0] * 9)]),
+            ]),
+            node("LayerElementUV", [("I", 0)], [
+                node("Name", [("S", b"map1")]),
+                node("MappingInformationType", [("S", b"ByPolygonVertex")]),
+                node("ReferenceInformationType", [("S", b"IndexToDirect")]),
+                node("UV", [("d", [0.0, 0.0, 1.0, 0.0, 1.0, 1.0, 0.0, 1.0])]),
+                node("UVIndex", [("i", [0, 1, 2, 3, 0, 1, 2, 3, 0])]),
+            ]),
+            node("LayerElementMaterial", [("I", 0)], [
+                node("MappingInformationType", [("S", b"ByPolygon")]),
+                node("ReferenceInformationType", [("S", b"IndexToDirect")]),
+                node("Materials", [("i", [0, 1])]),
+            ]),
+        ]),
+        obj("Material", 400, "Skin", "Material", "", [p70(("DiffuseColor", "Color", "", 1.0, 0.8, 0.7))]),
+        obj("Material", 401, "Cloth", "Material", "", [p70(("DiffuseColor", "Color", "", 0.2, 0.3, 0.9))]),
+        obj("Deformer", 500, "Skin", "Deformer", "Skin", []),
+        obj("Deformer", 501, "Hips", "SubDeformer", "Cluster", [
+            node("Indexes", [("i", [0, 1, 3])]),
+            node("Weights", [("d", [1.0, 0.75, 1.0])]),
+            node("Transform", [("d", IDENTITY)]),
+            node("TransformLink", [("d", IDENTITY[:12] + [0.0, 1.0, 0.0, 1.0])]),
+        ]),
+        obj("Deformer", 502, "Spine", "SubDeformer", "Cluster", [
+            node("Indexes", [("i", [1, 2, 4, 5, 6])]),
+            node("Weights", [("d", [0.25, 1.0, 1.0, 1.0, 1.0])]),
+            node("Transform", [("d", IDENTITY)]),
+            node("TransformLink", [("d", IDENTITY[:12] + [0.0, 1.5, 0.0, 1.0])]),
+        ]),
+        obj("Deformer", 600, "Body", "Deformer", "BlendShape", []),
+        obj("Deformer", 601, "smile", "SubDeformer", "BlendShapeChannel", [
+            node("DeformPercent", [("D", 25.0)]),
+            node("FullWeights", [("d", [80.0])]),
+        ]),
+        obj("Geometry", 602, "smile", "Geometry", "Shape", [
+            node("Indexes", [("i", [2, 6])]),
+            node("Vertices", [("d", [0.0, 0.25, 0.0, 0.0, 0.5, 0.0])]),
+        ]),
+    ]),
+    node("Connections", [], [
+        conn("OO", 100, 0), conn("OO", 101, 100), conn("OO", 200, 0),
+        conn("OO", 300, 200), conn("OO", 400, 200), conn("OO", 401, 200),
+        conn("OO", 500, 300), conn("OO", 501, 500), conn("OO", 502, 500),
+        conn("OO", 100, 501), conn("OO", 101, 502),
+        conn("OO", 600, 300), conn("OO", 601, 600), conn("OO", 602, 601),
+    ]),
+]
+
 HOSTILE = {
     # 66 nested records: the deepest list is at depth 65, past the limit of 64
     "deep_7400.fbx": nested(66),
@@ -139,7 +243,8 @@ def main():
         (out / f"tree_{version}.fbx").write_bytes(write(TREE, version))
     for name, nodes in HOSTILE.items():
         (out / name).write_bytes(write(nodes, 7400))
-    print("wrote", ", ".join([f"tree_{v}.fbx" for v in (7400, 7500)] + list(HOSTILE)))
+    (out / "scene_7400.fbx").write_bytes(write(SCENE, 7400))
+    print("wrote", ", ".join([f"tree_{v}.fbx" for v in (7400, 7500)] + list(HOSTILE) + ["scene_7400.fbx"]))
 
 
 if __name__ == "__main__":
