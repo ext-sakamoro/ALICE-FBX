@@ -42,8 +42,12 @@ def prop(kind, value):
     raise ValueError(kind)
 
 
-def node(name, props=(), children=None):
-    return (name, list(props), children)
+def node(name, props=(), children=None, slack=b"", trail=b"", overrun=0):
+    """A record; `slack` is written inside its property list after the properties (counted in
+    the list length) and `trail` after the null record that ends its children (counted in its
+    end offset), both to describe records that do not fit; `overrun` is added to the end offset
+    written (a record that claims to end past where it does)."""
+    return (name, list(props), children, slack, trail, overrun)
 
 
 def write(nodes, version):
@@ -53,8 +57,8 @@ def write(nodes, version):
     out = bytearray(MAGIC + struct.pack("<I", version))
 
     def emit(n):
-        name, props, children = n
-        body = b"".join(prop(k, v) for k, v in props)
+        name, props, children, slack, trail, overrun = n
+        body = b"".join(prop(k, v) for k, v in props) + slack
         start = len(out)
         out.extend(b"\x00" * struct.calcsize(head))  # end offset, count, list length: patched below
         out.extend(struct.pack("<B", len(name)) + name.encode())
@@ -63,7 +67,8 @@ def write(nodes, version):
             for c in children:
                 emit(c)
             out.extend(null)
-        struct.pack_into(head, out, start, len(out), len(props), len(body))
+        out.extend(trail)
+        struct.pack_into(head, out, start, len(out) + overrun, len(props), len(body))
 
     for n in nodes:
         emit(n)
@@ -231,6 +236,20 @@ HOSTILE = {
     "bomb_7400.fbx": [node("A", [raw_array("f", 3, 1, zlib.compress(b"\x00" * (1 << 20)))])],
     # 5 floats declared, 4 stored (raw)
     "short_7400.fbx": [node("A", [raw_array("f", 5, 0, struct.pack("<4f", 1, 2, 3, 4))])],
+    # 4 floats declared, a zlib stream that inflates to 3 (fewer than declared)
+    "inflate_short_7400.fbx": [node("A", [raw_array("f", 4, 1, zlib.compress(struct.pack("<3f", 1, 2, 3)))])],
+    # a property list declared 4 bytes longer than its one property
+    "slack_7400.fbx": [node("A", [("I", 7)], slack=b"\x00\x00\x00\x00")],
+    # 4 bytes after the null record that ends a record's children, inside the record
+    "trail_7400.fbx": [node("A", [], [node("B", [("I", 1)])], trail=b"\x00\x00\x00\x00")],
+    # a parent that claims to end 1 byte before its child does: A (at 27) holds B (at 41), which
+    # holds C and ends consistently; A's end offset is written 14 bytes short (before its own
+    # 13-byte null record and the last byte of B)
+    "overrun_7400.fbx": [node("A", [], [node("B", [], [node("C", [("I", 1)])])], overrun=-14), node("D", [("I", 2)])],
+    # 2^27 doubles (1 GiB) declared, past the array limit
+    "huge_7400.fbx": [node("A", [raw_array("d", 1 << 27, 0, b"")])],
+    # bools stored as 2, 0 and 255: any non-zero byte is true
+    "bools_7400.fbx": [node("A", [raw_array("b", 3, 0, bytes([2, 0, 255]))])],
     # 4 floats declared and stored, encoding 2 (unknown)
     "encoding_7400.fbx": [node("A", [raw_array("f", 4, 2, struct.pack("<4f", 1, 2, 3, 4))])],
 }

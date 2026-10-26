@@ -25,12 +25,12 @@ for f in "$tmp"/*.fbx; do
   cmp "$f" "tests/data/$(basename "$f")"
   n=$((n + 1))
 done
-[ "$n" -ge 8 ] || { echo "only $n fixtures compared"; exit 1; }
+[ "$n" -ge 14 ] || { echo "only $n fixtures compared"; exit 1; }
 echo "$n fixtures equal"
 
 step "ci.yml / test: tests with per-binary minimums"
 python3 scripts/test_min_passed.py
-cargo test 2>&1 | python3 scripts/min_passed.py tree=6 scene=7 parity=1
+cargo test 2>&1 | python3 scripts/min_passed.py tree=9 scene=7 parity=1
 
 step "ci.yml / msrv: build with rust-version 1.85"
 if rustup toolchain list | grep -q '^1\.85'; then

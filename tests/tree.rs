@@ -172,6 +172,16 @@ fn an_array_must_hold_exactly_its_declared_length() {
             &include_bytes!("data/encoding_7400.fbx")[..],
             "an unknown encoding",
         ),
+        // 2^27 doubles declared: 1 GiB, past the 256 MiB limit
+        (
+            &include_bytes!("data/huge_7400.fbx")[..],
+            "longer than the array limit",
+        ),
+        // the stream inflates to 12 bytes, 4 floats are declared
+        (
+            &include_bytes!("data/inflate_short_7400.fbx")[..],
+            "inflated length does not match the element count",
+        ),
     ] {
         assert!(
             matches!(read_tree(file), Err(FbxError::BadArray { why: w, .. }) if w == why),
@@ -179,4 +189,37 @@ fn an_array_must_hold_exactly_its_declared_length() {
             read_tree(file)
         );
     }
+}
+
+#[test]
+fn a_record_must_fill_exactly_its_declared_lengths() {
+    // one 5-byte property in a property list declared 9 bytes long
+    assert!(matches!(
+        read_tree(include_bytes!("data/slack_7400.fbx")),
+        Err(FbxError::BadProperty { why, .. }) if why == "the property list length does not match"
+    ));
+    // a record whose end offset is 4 bytes past the null record that ends its children
+    assert!(matches!(
+        read_tree(include_bytes!("data/trail_7400.fbx")),
+        Err(FbxError::BadOffset { .. })
+    ));
+}
+
+#[test]
+fn a_child_may_not_end_past_its_parent() {
+    // A (at 27) claims to end 1 byte before its child B (at 41) does: B is refused where it
+    // starts, not read through to a cut further on
+    assert_eq!(
+        read_tree(include_bytes!("data/overrun_7400.fbx")),
+        Err(FbxError::BadOffset { at: 41 })
+    );
+}
+
+#[test]
+fn any_non_zero_bool_byte_is_true() {
+    let doc = read_tree(include_bytes!("data/bools_7400.fbx")).unwrap();
+    assert_eq!(
+        doc.nodes[0].props,
+        vec![Prop::Bools(vec![true, false, true])]
+    );
 }
