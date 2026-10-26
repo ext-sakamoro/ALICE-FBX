@@ -1,0 +1,76 @@
+name: Security & Hygiene
+
+on:
+  push:
+    branches: [main, 'ci/**']
+  pull_request:
+    branches: [main]
+  schedule:
+    # weekly: a new advisory against a dependency turns this red without a push
+    - cron: '17 3 * * 1'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/main' && github.sha || github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  audit:
+    name: cargo audit (RustSec)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5.1.0
+        with:
+          persist-credentials: false
+      - run: cargo install cargo-audit --locked
+      - run: cargo generate-lockfile
+      - run: cargo audit
+
+  deny:
+    name: cargo-deny (licences + advisories + bans + sources)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5.1.0
+        with:
+          persist-credentials: false
+      - run: cargo install cargo-deny --locked
+      - run: cargo deny check all
+
+  unused-deps:
+    name: cargo-machete (unused dependencies)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5.1.0
+        with:
+          persist-credentials: false
+      - run: cargo install cargo-machete --locked
+      - run: cargo machete
+
+  stub-guard:
+    name: No stub in src
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5.1.0
+        with:
+          persist-credentials: false
+      # the library refuses what it cannot read with an error; a todo!/unimplemented! or a
+      # silent placeholder in src would turn an unread input into a panic or a wrong value
+      - name: No todo!/unimplemented!/stub panic in src
+        run: |
+          set -euo pipefail
+          n=$(find src -name '*.rs' | wc -l)
+          [ "$n" -gt 0 ] || { echo "no source file scanned"; exit 1; }
+          if grep -rnE 'todo!|unimplemented!|panic!\(".*(stub|not implemented)' src; then
+            exit 1
+          fi
+          echo "$n source files, no stub"

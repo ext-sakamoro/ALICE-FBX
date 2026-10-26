@@ -1,0 +1,7 @@
+# Toolchain pin. clippy's lint set moves with the compiler, so an unpinned
+# toolchain turns `-D warnings` into a gate that changes under the project
+# without any change to the project.
+[toolchain]
+channel = "1.98.1"
+components = ["rustfmt", "clippy"]
+profile = "minimal"

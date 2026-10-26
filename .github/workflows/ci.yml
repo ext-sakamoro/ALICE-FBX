@@ -1,0 +1,84 @@
+name: CI
+
+on:
+  push:
+    # ci/**: the same checks on a branch before it is fast-forwarded to main
+    branches: [main, 'ci/**']
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+# on main each commit has a group of its own and a run there is never
+# cancelled; a newer push cancels an older run only off main
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/main' && github.sha || github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  lint:
+    name: fmt + clippy
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5.1.0
+        with:
+          persist-credentials: false
+      # the toolchain (with rustfmt and clippy) comes from rust-toolchain.toml
+      - run: cargo fmt --all -- --check
+      - run: cargo clippy --all-targets -- -D warnings
+
+  test:
+    name: test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5.1.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6.3.0
+        with:
+          python-version: '3.12'
+      # the fixtures in tests/data are what scripts/fbx_fixture.py writes: regenerate and compare
+      - name: Fixtures are the writer's output
+        shell: bash
+        run: |
+          set -euo pipefail
+          tmp=$(mktemp -d)
+          python3 scripts/fbx_fixture.py "$tmp"
+          n=0
+          for f in "$tmp"/*.fbx; do
+            cmp "$f" "tests/data/$(basename "$f")"
+            n=$((n + 1))
+          done
+          [ "$n" -ge 7 ] || { echo "only $n fixtures compared"; exit 1; }
+      # every test binary ran at least as many tests as named (a test that stops being
+      # compiled or is renamed away fails here instead of passing by absence)
+      - name: Tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/test_min_passed.py
+          cargo test 2>&1 | python3 scripts/min_passed.py tree=6 parity=1
+
+  msrv:
+    name: MSRV (1.85)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5.1.0
+        with:
+          persist-credentials: false
+      - name: Build the library with the declared rust-version
+        run: |
+          rustup toolchain install 1.85 --profile minimal
+          cargo +1.85 build --lib

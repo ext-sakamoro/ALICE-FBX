@@ -1,0 +1,51 @@
+name: Fuzz
+
+# The reader is fed bytes it did not write: each target runs for a minute from the fixtures
+# in tests/data, and a crash fails the run with the input attached
+
+on:
+  push:
+    branches: [main, 'ci/**']
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref == 'refs/heads/main' && github.sha || github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+permissions:
+  contents: read
+
+jobs:
+  fuzz:
+    name: fuzz (${{ matrix.target }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [fuzz_read_tree, fuzz_read_tree_versioned]
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09  # v5.1.0
+        with:
+          persist-credentials: false
+      # cargo-fuzz needs nightly (over the rust-toolchain.toml pin)
+      - name: Install nightly
+        run: rustup toolchain install nightly --profile minimal
+      - run: cargo +nightly install cargo-fuzz --locked
+      - name: Seed corpus from the fixtures
+        run: |
+          set -euo pipefail
+          mkdir -p "fuzz/corpus/${{ matrix.target }}"
+          cp tests/data/*.fbx "fuzz/corpus/${{ matrix.target }}/"
+          n=$(find "fuzz/corpus/${{ matrix.target }}" -type f | wc -l)
+          [ "$n" -gt 0 ] || { echo "empty corpus"; exit 1; }
+      - name: Run for 60 s
+        run: cargo +nightly fuzz run "${{ matrix.target }}" -- -max_total_time=60 -rss_limit_mb=2048
+      - name: Keep a crashing input
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: fuzz-artifacts-${{ matrix.target }}
+          path: fuzz/artifacts/${{ matrix.target }}

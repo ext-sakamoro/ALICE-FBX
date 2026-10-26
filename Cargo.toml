@@ -1,0 +1,26 @@
+[package]
+name = "alice-fbx"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.85"
+publish = false
+description = "A bounds-checked reader of binary FBX files: the node tree and the scene (meshes, skins, blend shapes, bones, materials)."
+authors = ["Moroya Sakamoto"]
+license = "LicenseRef-Proprietary"
+repository = "https://github.com/ext-sakamoro/ALICE-FBX"
+readme = "README.md"
+keywords = ["fbx", "3d", "mesh", "parser"]
+categories = ["parser-implementations", "graphics"]
+
+[dependencies]
+miniz_oxide = "0.8"
+
+[dev-dependencies]
+# an independent FBX parser, read only by the parity test
+fbxcel = { version = "0.9", features = ["tree"] }
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+pedantic = { level = "warn", priority = -1 }
